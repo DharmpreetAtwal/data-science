@@ -3,12 +3,8 @@ from matplotlib import pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-from sklearn.feature_selection import RFE
+from sklearn.feature_selection import RFECV
 from sklearn.model_selection import GridSearchCV
 
 from imblearn.under_sampling import RandomUnderSampler
@@ -37,7 +33,7 @@ df_clean['readmitted'] = df_clean['readmitted'].astype(int)
 # =============================================================================
 # TESTING WITH 5000 SAMPLE
 # =============================================================================
-df_clean = df_clean.sample(5000, random_state=42)
+#df_clean = df_clean.sample(5000, random_state=42)
 
 
 
@@ -48,7 +44,16 @@ df_labels = df_labels.reset_index(drop=True)
 
 # %%
 # Seperate Categorical Features into High/Low Cardinalities
-low_cardinality_cat = ['race', 'gender', 'age', 'admission_type_id', 'discharge_disposition_id', 'admission_source_id', 'payer_code', 'medical_specialty', 'max_glu_serum', 'A1Cresult', 'metformin', 'repaglinide', 'nateglinide', 'chlorpropamide', 'glimepiride', 'acetohexamide', 'glipizide', 'glyburide', 'tolbutamide', 'pioglitazone', 'rosiglitazone', 'acarbose', 'miglitol', 'troglitazone', 'tolazamide', 'examide', 'citoglipton', 'insulin', 'glyburide-metformin', 'glipizide-metformin', 'glimepiride-pioglitazone', 'metformin-rosiglitazone', 'metformin-pioglitazone', 'change', 'diabetesMed']
+low_cardinality_cat = ['race', 'gender', 'age', 'admission_type_id', 
+                       'discharge_disposition_id', 'admission_source_id', 
+                       'payer_code', 'medical_specialty', 'max_glu_serum', 
+                       'A1Cresult', 'metformin', 'repaglinide', 'nateglinide', 
+                       'chlorpropamide', 'glimepiride', 'acetohexamide', 'glipizide', 
+                       'glyburide', 'tolbutamide', 'pioglitazone', 'rosiglitazone', 
+                       'acarbose', 'miglitol', 'troglitazone', 'tolazamide', 'examide', 
+                       'citoglipton', 'insulin', 'glyburide-metformin', 'glipizide-metformin', 
+                       'glimepiride-pioglitazone', 'metformin-rosiglitazone', 
+                       'metformin-pioglitazone', 'change', 'diabetesMed']
 high_cardinality_cat = ['diag_1', 'diag_2', 'diag_3']
 
 # Apply One-Hot Encoding to Low Cardinality Categorical Features
@@ -81,6 +86,7 @@ display.plot()
 plt.show()
 
 # %%
+# Display 20 most important features
 f_i = list(zip(X_train.columns, rf.feature_importances_))
 f_i.sort(key=lambda x: x[1], reverse=True)
 
@@ -88,13 +94,13 @@ most = f_i[0:20]
 plt.barh([x[0] for x in most], [x[1] for x in most])
 
 # %%
-# Recursively eliminate least important features
-rfe = RFE(rf, n_features_to_select=20)
-rfe.fit(X_train, y_train)
-selected = X_train.columns[rfe.support_]
+# Recursively eliminate least important features using cross validation
+rfecv = RFECV(rf, cv=5, scoring='recall')
+rfecv.fit(X_train, y_train)
+selected = X_train.columns[rfecv.support_]
 
 # %%
-# After appyling reduction using selected features
+# After appyling reduction, see improvement in artificial dataset
 X_train, X_test, y_train, y_test = train_test_split(X[selected], y, test_size=0.5, random_state=42)
 
 rf = RandomForestClassifier(random_state=42)
@@ -109,16 +115,13 @@ display.plot()
 plt.show()
 
 # %%
-# Use reduced feature set
-df_features_reduced = df_features[selected]
-
 param_grid = {
     'max_depth': [10, 20, None],
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4],
 }
 
-# Exhaustive search for best hyperparameters
+# Exhaustive search for best hyperparameters that maximize recall
 grid_search = GridSearchCV(
     RandomForestClassifier(class_weight='balanced', 
                            random_state=42),
@@ -127,17 +130,25 @@ grid_search = GridSearchCV(
     cv=5
 )
 
+# Use reduced feature set
+df_features_reduced = df_features[selected]
+
 grid_search.fit(df_features_reduced, df_labels)
 best_model = grid_search.best_estimator_
 
+# %%
 # Train test optimized RandomForestClassifier
 X_train, X_test, y_train, y_test = train_test_split(
     df_features_reduced, df_labels, test_size=0.5, random_state=42)
 best_model.fit(X_train, y_train)
 
-y_pred = best_model.predict(X_test)
-matrix = confusion_matrix(y_test, y_pred)
+#y_pred = best_model.predict(X_test)
 
+# Adjust threshold to trade higher recall for lower precision
+y_prob = best_model.predict_proba(X_test)[:, 1]
+y_pred = (y_prob >= 0.40).astype(int)
+
+matrix = confusion_matrix(y_test, y_pred)
 disp = ConfusionMatrixDisplay(confusion_matrix=matrix)
 disp.plot()
 plt.show()

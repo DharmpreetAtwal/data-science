@@ -10,16 +10,13 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-from sklearn.feature_selection import RFE
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import RFECV
 from sklearn.model_selection import GridSearchCV
 
 from imblearn.under_sampling import RandomUnderSampler
 
 # %%
-df = pd.read_csv("C:/Users/coolb/Downloads/Coding/data-science/travel/travel.csv")
+df = pd.read_csv("./travel/travel.csv")
 
 # Remove columns where 90% of the data is nan
 nan_col = df.columns[(df.isna() | df.eq("")).sum() / len(df) > 0.9].tolist()
@@ -65,10 +62,10 @@ df_labels = df_clean['is_booking'].reset_index(drop=True)
 
 # %%
 # Use RandomUnderSampler to create a artificial dataset with no class imbalance
-# Perform feature selection on this artificial dataset 
 rus = RandomUnderSampler(random_state=42)
 X, y = rus.fit_resample(df_features, df_labels)
 
+# Perform feature selection on this artificial dataset 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
 rf = RandomForestClassifier(random_state=42)
 rf.fit(X_train, y_train)
@@ -82,25 +79,26 @@ plt.show()
 
 # %%
 # Display the importance of each faeture
-f_i = list(zip(X_train.columns, rf.feature_importances_))[0:20]
-f_i.sort(key=lambda x: x[1])
-plt.barh([x[0] for x in f_i], [x[1] for x in f_i])
+f_i = list(zip(X_train.columns, rf.feature_importances_))
+f_i.sort(key=lambda x: x[1], reverse=True)
+
+most = f_i[0:20]
+plt.barh([x[0] for x in most], [x[1] for x in most])
 
 # %%
-# Recursively eliminate the least important features
-rfe = RFE(estimator=rf, n_features_to_select=8)
-rfe.fit(X_train, y_train)
-selected = X_train.columns[rfe.support_]
+# Recursively eliminate the least important features with cross validation
+rfecv = RFECV(rf, cv=5, scoring='recall')
+rfecv.fit(X_train, y_train)
+selected = X_train.columns[rfecv.support_]
 
 # %%
-df_features_reduced = df_features[selected]
-
 param_grid = {
     'max_depth': [10, 20, None],
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4],
 }
 
+# Exhaustive search for best hyperparameters that maximize recall
 grid_search = GridSearchCV(
     RandomForestClassifier(class_weight='balanced', random_state=42),
     param_grid,
@@ -108,9 +106,12 @@ grid_search = GridSearchCV(
     cv=5
 )
 
+df_features_reduced = df_features[selected]
 grid_search.fit(df_features_reduced, df_labels)
 best_model = grid_search.best_estimator_
 
+# %%
+# Train test optimized RandomForestClassifier
 X_train, X_test, y_train, y_test = train_test_split(df_features_reduced, df_labels, test_size=0.5, random_state=42)
 best_model.fit(X_train, y_train)
 
