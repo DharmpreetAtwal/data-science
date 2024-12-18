@@ -5,15 +5,20 @@ Created on Sun Dec 15 13:31:20 2024
 @author: dharm
 """
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.feature_selection import RFECV
 from sklearn.model_selection import GridSearchCV
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import PCA
+from sklearn.decomposition import PCA
+
+from keras import Sequential
+from keras.layers import Dense
 
 from imblearn.under_sampling import RandomUnderSampler
 
@@ -34,39 +39,36 @@ df_clean = df.dropna().copy()
 df_clean['date_of_year'] = pd.to_datetime(df_clean['date_time']).dt.dayofyear.astype(int)
 df_clean['check_in'] = pd.to_datetime(df_clean['srch_ci']).dt.dayofyear.astype(int)
 df_clean['check_out'] = pd.to_datetime(df_clean['srch_co']).dt.dayofyear.astype(int)
-df_clean.drop(['date_time', 'srch_ci', 'srch_co'], inplace=True, axis=1)
+df_clean.drop(['date_time', 'srch_ci', 'srch_co', 'Unnamed: 0', 'user_id'], inplace=True, axis=1)
 
-#df_clean = df_clean.sample(5000)
 # %%
 # =============================================================================
-# # POTENTIAL ISSUE: May need to encode ID based features that aren't randomly assigned
+# # POTENTIAL ISSUE: Need to encode ID based features that aren't randomly assigned
 # posa_continent is directly related to site_name
 # =============================================================================
-
-# Drop label, and randomly generated id's 
-df_features = df_clean.drop(['is_booking', 'Unnamed: 0', 'user_id'], inplace=False, axis=1)
-
 # Apply One Hot Encoding to low cardinality categorical data
 low_cardinal_cat = ['site_name', 'posa_continent', 'user_location_country', 'channel', 'srch_destination_type_id', 'hotel_continent']
-df_features = pd.get_dummies(df_features, columns=low_cardinal_cat)
+df_clean = pd.get_dummies(df_clean, columns=low_cardinal_cat)
 
 # Apply Frequency Encoding to high cardinality categorical data
 # Replace high cardinality features with their frequency encoded versions
 high_cardinal_cat = ['user_location_region', 'user_location_city', 'srch_destination_id', 'hotel_country', 'hotel_market', 'hotel_cluster']
 for feature in high_cardinal_cat:
-    freq_encoding = df_features[feature].value_counts(normalize=True)
-    df_features[feature + "_Encoded"] = df_features[feature].map(freq_encoding)
-df_features.drop(high_cardinal_cat, inplace=True, axis=1)
+    freq_encoding = df_clean[feature].value_counts(normalize=True)
+    df_clean[feature + "_Encoded"] = df_clean[feature].map(freq_encoding)
+df_clean.drop(high_cardinal_cat, inplace=True, axis=1)
 
+# Drop label, and randomly generated id's 
+df_features = df_clean.drop(['is_booking'], inplace=False, axis=1)
 df_labels = df_clean['is_booking'].reset_index(drop=True)
 
 # %%
 # Use RandomUnderSampler to create a artificial dataset with no class imbalance
 rus = RandomUnderSampler(random_state=42)
-X, y = rus.fit_resample(df_features, df_labels)
+X_balance, y_balance = rus.fit_resample(df_features, df_labels)
 
 # Perform feature selection on this artificial dataset using Random Forest
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X_balance, y_balance, test_size=0.5, random_state=42)
 rf = RandomForestClassifier(random_state=42)
 rf.fit(X_train, y_train)
 
@@ -87,78 +89,70 @@ plt.barh([x[0] for x in most], [x[1] for x in most])
 
 # %%
 # Recursively eliminate the least important features with cross validation
-rfecv = RFECV(rf, cv=5, scoring='recall')
-rfecv.fit(X_train, y_train)
-selected = X_train.columns[rfecv.support_]
+# rfecv = RFECV(rf, cv=5, scoring='recall')
+# rfecv.fit(X_train, y_train)
+# selected = X_train.columns[rfecv.support_]
+
+# The result of runnning the above RFECV (long runtime)
+selected = ['orig_destination_distance', 'is_mobile', 'is_package',
+       'srch_adults_cnt', 'srch_children_cnt', 'srch_rm_cnt', 'cnt',
+       'date_of_year', 'check_in', 'check_out', 'site_name_2', 'site_name_8',
+       'site_name_11', 'site_name_34', 'posa_continent_1', 'posa_continent_3',
+       'user_location_country_66', 'user_location_country_205', 'channel_0',
+       'channel_1', 'channel_2', 'channel_3', 'channel_4', 'channel_5',
+       'channel_9', 'srch_destination_type_id_1', 'srch_destination_type_id_3',
+       'srch_destination_type_id_4', 'srch_destination_type_id_5',
+       'srch_destination_type_id_6', 'hotel_continent_2', 'hotel_continent_3',
+       'hotel_continent_4', 'hotel_continent_6',
+       'user_location_region_Encoded', 'user_location_city_Encoded',
+       'srch_destination_id_Encoded', 'hotel_country_Encoded',
+       'hotel_market_Encoded', 'hotel_cluster_Encoded']
 
 # %%
-param_grid = {
-    'max_depth': [10, 20, None],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 4],
-}
+# # Get the reduced feature subset of the sample
+X = df_clean[selected].values
+y = df_clean[['is_booking']].values
 
-# Exhaustive search for best hyperparameters that maximize recall
-grid_search = GridSearchCV(
-    RandomForestClassifier(class_weight='balanced', random_state=42),
-    param_grid,
-    scoring='recall',
-    cv=5
-)
+scaler=StandardScaler()
+X = scaler.fit_transform(X)
 
-df_features_reduced = df_features[selected]
-grid_search.fit(df_features_reduced, df_labels)
-best_model = grid_search.best_estimator_
+# Split the data into training and testing set
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+neg, pos = np.bincount(df_clean['is_booking'])
+weight_0 = (1 / neg) * (len(X) / 2.0)
+weight_1 = (1 / pos) * (len(X) / 2.0)
+
+class_weight = {0: weight_0, 1: weight_1}
 
 # %%
-# Train test optimized RandomForestClassifier
-X_train, X_test, y_train, y_test = train_test_split(df_features_reduced, df_labels, test_size=0.5, random_state=42)
-best_model.fit(X_train, y_train)
+clf = Sequential()
 
-y_pred = best_model.predict(X_test)
+# 40 Feature input layer
+clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu', input_dim=40,))
+
+# 1st Hidden Layer
+clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu'))
+
+# 2nd Hidden Layer
+clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu'))
+
+# Output layer, binary classification
+clf.add(Dense(units=1, kernel_initializer='uniform', activation='sigmoid'))
+
+from keras.metrics import BinaryAccuracy
+from keras.metrics import Precision
+from keras.metrics import Recall
+
+mets=[Recall(name='recall')]
+clf.compile(optimizer='adam', loss='binary_crossentropy', metrics=mets)
+ann = clf.fit(X_train,y_train, batch_size=10, epochs=50, class_weight=class_weight, verbose=1)
+
+# %%
+y_prob = clf.predict(X_test, batch_size=10)
+y_pred = [1 if x >=0.5 else 0 for x in y_prob]
+
 matrix = confusion_matrix(y_test, y_pred)
-
 disp = ConfusionMatrixDisplay(confusion_matrix=matrix)
 disp.plot()
 plt.show()
-
-# %%
-df_clean = df_clean.sample(5000)
-
-
-
-kmeans = KMeans(n_clusters=2, random_state=42)
-pred_labels = kmeans.fit_predict(df_features_reduced, df_labels)
-
-pca = PCA(n_components=2)
-pca_components = pca.fit_transform(df_features_reduced)
-
-m = ['o', 'x']
-c = ['hotpink', 'red']
-
-fig = plt.figure()
-ax = fig.add_subplot(111)
-
-for i in range(len(pca_components)):
-    if df_labels.at[i] == 0:
-        marker_index = 0
-    else:
-        marker_index = 1
-
-    #if marker_index != 0:
-    #    continue
-
-    ax.scatter(pca_components[i][0], pca_components[i][1],
-                color=c[pred_labels[i]],
-                marker=m[marker_index])
-
-
-
-        
-
-
-
-
-
-
-

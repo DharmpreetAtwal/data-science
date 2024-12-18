@@ -153,4 +153,26 @@ disp = ConfusionMatrixDisplay(confusion_matrix=matrix)
 disp.plot()
 plt.show()
 
+# %%
+
+# %%
+m = ['o', 'x']
+c = ['hotpink', 'red']
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+for i in range(len(pca_components)):
+    if df_labels.at[i] == 0:
+        marker_index = 0
+    else:
+        marker_index = 1
+
+    if marker_index != 0:
+        continue
+
+    ax.scatter(pca_components[i][0], pca_components[i][1],
+                color=c[pred_labels[i]],
+                marker=m[marker_index])
+
 
