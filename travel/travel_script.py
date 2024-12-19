@@ -126,33 +126,44 @@ weight_1 = (1 / pos) * (len(X) / 2.0)
 class_weight = {0: weight_0, 1: weight_1}
 
 # %%
+from keras.layers import Dropout, BatchNormalization
 clf = Sequential()
 
 # 40 Feature input layer
-clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu', input_dim=40,))
+clf.add(Dense(units=32, kernel_initializer='uniform', activation='relu', input_dim=40,))
 
 # 1st Hidden Layer
-clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu'))
+clf.add(Dense(units=128, kernel_initializer='uniform', activation='relu'))
+
+# Dropout to prevent overfitting
+clf.add(BatchNormalization())  
+clf.add(Dropout(0.5))
 
 # 2nd Hidden Layer
-clf.add(Dense(units=10, kernel_initializer='uniform', activation='relu'))
+clf.add(Dense(units=64, kernel_initializer='uniform', activation='relu'))
+
+# Dropout to prevent overfitting
+clf.add(BatchNormalization())  
+clf.add(Dropout(0.25))
 
 # Output layer, binary classification
 clf.add(Dense(units=1, kernel_initializer='uniform', activation='sigmoid'))
 
-from keras.metrics import BinaryAccuracy
-from keras.metrics import Precision
 from keras.metrics import Recall
 
 mets=[Recall(name='recall')]
 clf.compile(optimizer='adam', loss='binary_crossentropy', metrics=mets)
-ann = clf.fit(X_train,y_train, batch_size=10, epochs=50, class_weight=class_weight, verbose=1)
+ann = clf.fit(X_train,y_train, batch_size=10, epochs=40, class_weight=class_weight, verbose=1)
 
 # %%
 y_prob = clf.predict(X_test, batch_size=10)
-y_pred = [1 if x >=0.5 else 0 for x in y_prob]
+y_pred = (y_prob > 0.5).astype(int)
 
 matrix = confusion_matrix(y_test, y_pred)
 disp = ConfusionMatrixDisplay(confusion_matrix=matrix)
 disp.plot()
 plt.show()
+# %%
+clf.save("./travel/booking_epoch40.keras")
+
+
