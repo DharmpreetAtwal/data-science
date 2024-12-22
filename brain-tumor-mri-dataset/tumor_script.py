@@ -145,7 +145,7 @@ with tf.device(tf.test.gpu_device_name()):
                    shuffle=False)
 
 # %%
-#clf.save("./model.keras")
+clf.save("./model.keras")
 #clf = keras.models.load_model("model.keras")
 
 # %%
