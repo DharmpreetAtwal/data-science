@@ -23,7 +23,6 @@ import seaborn as sb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 
-import keras
 import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Flatten, Dropout, Dense
@@ -140,12 +139,86 @@ clf.summary()
 
 # %%
 with tf.device(tf.test.gpu_device_name()):
-    hist = clf.fit(gen_train, epochs=10, 
+    history = clf.fit(gen_train, epochs=10, 
                    validation_data=gen_val,
                    shuffle=False)
 
 # %%
-clf.save("./model.keras")
+# Mapping model performance over epochs
+h = history
+acc_train = h.history['accuracy']
+loss_train = h.history['loss']
+pre_train = h.history['precision']
+recall_train = h.history['recall']
+
+acc_val = h.history['val_accuracy']
+loss_val = h.history['val_loss']
+pre_val = h.history['val_precision']
+recall_val = h.history['val_recall']
+
+acc_index = np.argmax(acc_val)
+highest_acc = acc_val[acc_index]
+
+loss_index = np.argmin(loss_val)
+lowest_val = loss_val[loss_index]
+
+pre_index = np.argmax(pre_val)
+highest_pre = pre_val[pre_index]
+
+recall_index = np.argmax(recall_val)
+highest_recall = recall_val[recall_index]
+
+epochs = range(1, len(acc_train) + 1)
+
+lbl_acc = f'Best = {str(acc_index + 1)}'
+lbl_loss = f'Best = {str(loss_index + 1)}'
+lbl_pre = f'Best = {str(acc_index + 1)}'
+lbl_recall = f'Best = {str(recall_index + 1)}'
+
+plt.figure(figsize=(18, 15))
+
+plt.subplot(2, 2, 1)
+plt.plot(epochs, loss_train, 'g', label='Train Loss')
+plt.plot(epochs, loss_val, 'b', label='Val Loss')
+plt.scatter(loss_index + 1, lowest_val, s=100, c='red', label=lbl_loss)
+plt.title("Train and Val Loss")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+
+plt.subplot(2, 2, 2)
+plt.plot(epochs, acc_train, 'g', label='Train Acc')
+plt.plot(epochs, acc_val, 'b', label='Val Acc')
+plt.scatter(acc_index + 1, highest_acc, s=100, c='red', label=lbl_acc)
+plt.title("Train and Val Acc")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+
+plt.subplot(2, 2, 3)
+plt.plot(epochs, pre_train, 'g', label='Train Pre')
+plt.plot(epochs, pre_val, 'b', label='Val Pre')
+plt.scatter(pre_index + 1, highest_pre, s=100, c='red', label=lbl_pre)
+plt.title("Train and Val Pre")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+
+plt.subplot(2, 2, 4)
+plt.plot(epochs, recall_train, 'g', label='Train Recall')
+plt.plot(epochs, recall_val, 'b', label='Val Recall')
+plt.scatter(recall_index + 1, highest_recall, s=100, c='red', label=lbl_pre)
+plt.title("Train and Val Recall")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+
+# %%
+#clf.save("./model.keras")
 #clf = keras.models.load_model("model.keras")
 
 # %%
