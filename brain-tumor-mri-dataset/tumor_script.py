@@ -9,14 +9,6 @@ import pandas as pd
 import numpy as np
 import os 
 
-# %%
-lst=[]
-# Must cd into brain-tumor-mri-dataset
-for (root,dirs,files) in os.walk("./data"):
-    for file in files: 
-        lst.append(os.path.join(root, file))
-        
-# %%
 import matplotlib.pyplot as plt
 import seaborn as sb
 
@@ -25,11 +17,17 @@ from sklearn.metrics import confusion_matrix
 
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Flatten, Dropout, Dense
+from keras.layers import Flatten, Dropout, Dense, Rescaling, RandomBrightness
 from keras.optimizers import Adamax
 from keras.metrics import Recall, Precision
-from keras.preprocessing.image import ImageDataGenerator
 
+# %%
+lst=[]
+# Must cd into brain-tumor-mri-dataset
+for (root,dirs,files) in os.walk("./data"):
+    for file in files: 
+        lst.append(os.path.join(root, file))
+       
 # %%
 # Test GPU connected
 tf.test.gpu_device_name()
@@ -40,6 +38,8 @@ data_path = "./data"
 lst_images = []
 # For each file in ./data
 for tumor_type in os.listdir(data_path):
+    if tumor_type == "train_test_val":
+        continue
     
     # Check that ./data_path/tumor_type is a folder
     if os.path.isdir(os.path.join(data_path, tumor_type)):
@@ -67,56 +67,104 @@ count_plot(df)
 df_train, df_test_val = train_test_split(df, train_size=0.8,                              
                                          stratify=df['Tumor'],
                                          random_state=42)
-df_test, df_val = train_test_split(df_test_val, train_size=0.5)
+df_test, df_val = train_test_split(df_test_val, train_size=0.5, 
+                                   stratify=df_test_val['Tumor'])
+df_train.reset_index()
+df_test.reset_index()
+df_val.reset_index()
 
+# %%
+# Create seperate folders for train, test, val
+ttv_path = "./data/train_test_val"
+if not os.path.isdir(ttv_path):
+    os.mkdir(ttv_path)
+
+
+import shutil
+
+train_val_path = "./data/train_test_val/train_val"
+if not os.path.isdir(train_val_path):
+    os.mkdir(train_val_path)
+    
+    for tumor in df['Tumor'].unique():
+        os.mkdir(train_val_path + "/" + tumor)
+        
+    for i, row in df_train.iterrows():
+        shutil.copy(row['Path'], train_val_path + "/" + row['Tumor'])
+    for i, row in df_val.iterrows():
+        shutil.copy(row['Path'], train_val_path + "/" + row['Tumor'])
+
+test_path = "./data/train_test_val/test"
+if not os.path.isdir(test_path):
+    os.mkdir(test_path)
+    
+    for tumor in df['Tumor'].unique():
+        os.mkdir(test_path + '/' + tumor)
+    
+    for i, row in df_test.iterrows():
+        shutil.copy(row['Path'], test_path + '/' + row['Tumor'])
+
+    
 # %%
 count_plot(df_train)
 count_plot(df_test)
 count_plot(df_val)
 
 # %%
-# Preprocessing data into generators
-# Large Batch size causes ResourceExhaustionError
 batch = 16
-size = (299, 299)    
+size = (299, 299)   
 
-idg = ImageDataGenerator(rescale=1/255, brightness_range=(0.8, 1.2))
-idg_test = ImageDataGenerator(rescale=1/255)
+train_ds = tf.keras.utils.image_dataset_from_directory(
+  train_val_path,
+  validation_split=1/9,
+  label_mode='categorical',
+  subset="training",
+  seed=123,
+  image_size=size,
+  batch_size=batch)
 
-gen_train = idg.flow_from_dataframe(df_train, 
-                                    x_col='Path', y_col='Tumor',
-                                    batch_size=batch, target_size=size)
+val_ds = tf.keras.utils.image_dataset_from_directory(
+  train_val_path,
+  validation_split=1/9,
+  label_mode='categorical',
+  subset="validation",
+  seed=123,
+  image_size=size,
+  batch_size=batch)
 
-gen_val = idg.flow_from_dataframe(df_val, 
-                                  x_col='Path', y_col='Tumor',
-                                  batch_size=batch, target_size=size)
+test_ds = tf.keras.utils.image_dataset_from_directory(
+  test_path,
+  label_mode='categorical',
+  seed=123,
+  image_size=size,
+  batch_size=batch,
+  shuffle=False)
 
-gen_test = idg_test.flow_from_dataframe(df_test, 
-                                   x_col='Path', y_col='Tumor',
-                                   batch_size=batch, target_size=size, 
-                                   shuffle=False)
+class_lst = train_ds.class_names
 
 # %%
-class_lst = list(gen_train.class_indices.keys())
-dict_class = gen_train.class_indices
-imgs, lbls = next(gen_test)
-
 plt.figure(figsize=(18, 18))
-
 dim = 4
-for i, (img, lbl) in enumerate(zip(imgs, lbls)):
-    if i + 1 == dim ** 2 + 1:
-        break
-    
-    class_name = class_lst[np.argmax(lbl)]
-    
-    plt.title(class_name, fontsize=16)
-    plt.subplot(dim, dim, i + 1)
-    plt.imshow(img)
+
+for imgs, lbls in val_ds.take(1):
+    for i in range(20):
+        if i + 1 == dim ** 2 + 1:
+            break
+        
+        axis = plt.subplot(dim, dim, i + 1)
+        plt.imshow(imgs[i].numpy().astype("uint8"))
+        
+        
+        plt.title(class_lst[np.argmax(lbls[i])])
+        plt.axis("off")
     
 plt.show()
 
 # %%
+auto_tune = tf.data.AUTOTUNE
+train_ds = train_ds.cache().prefetch(buffer_size=auto_tune)
+val_ds = val_ds.cache().prefetch(buffer_size=auto_tune)
+
 input_shape = (299, 299, 3)
 xception = tf.keras.applications.Xception(input_shape=input_shape,                                       
                                        weights="imagenet",
@@ -125,6 +173,8 @@ xception = tf.keras.applications.Xception(input_shape=input_shape,
 
 clf = Sequential()
 
+clf.add(RandomBrightness(factor=0.2))
+clf.add(Rescaling(1./255))
 clf.add(xception)
 clf.add(Flatten())
 clf.add(Dropout(0.3))
@@ -135,26 +185,26 @@ clf.add(Dense(4, activation="softmax"))
 clf.compile(Adamax(learning_rate=0.001),
             loss='categorical_crossentropy',
             metrics=['accuracy', Recall(), Precision()])
-clf.summary()
 
 # %%
+# Originally used 10 epochs, but led to overfitting
+# Best acc, pre, recall came with 7 epochs
 with tf.device(tf.test.gpu_device_name()):
-    history = clf.fit(gen_train, epochs=10, 
-                   validation_data=gen_val,
+    h = clf.fit(train_ds, epochs=7, 
+                   validation_data=val_ds,
                    shuffle=False)
 
 # %%
 # Mapping model performance over epochs
-h = history
 acc_train = h.history['accuracy']
 loss_train = h.history['loss']
-pre_train = h.history['precision']
-recall_train = h.history['recall']
+pre_train = h.history['precision_8']
+recall_train = h.history['recall_8']
 
 acc_val = h.history['val_accuracy']
 loss_val = h.history['val_loss']
-pre_val = h.history['val_precision']
-recall_val = h.history['val_recall']
+pre_val = h.history['val_precision_8']
+recall_val = h.history['val_recall_8']
 
 acc_index = np.argmax(acc_val)
 highest_acc = acc_val[acc_index]
@@ -222,22 +272,23 @@ plt.grid(True)
 #clf = keras.models.load_model("model.keras")
 
 # %%
-gen_train_copy = gen_train
-gen_test_copy = gen_test
-gen_val_copy = gen_val
-
-score_train = clf.evaluate(gen_train_copy, verbose=1)
-# %%
-score_valid = clf.evaluate(gen_test_copy, verbose=1)
-score_test = clf.evaluate(gen_val_copy, verbose=1)
+score_train = clf.evaluate(train_ds, verbose=1)
+score_valid = clf.evaluate(test_ds, verbose=1)
+score_test = clf.evaluate(val_ds, verbose=1)
 
 # %%
-pred = clf.predict(gen_test_copy)
+pred = clf.predict(test_ds)
 y_pred = np.argmax(pred, axis=1)
 
 # %%
-matrix = confusion_matrix(gen_test_copy.classes, y_pred)
-lbls = list(dict_class)
+y_true = []
+for _, labels in test_ds:
+    for item in labels.numpy():    
+        y_true.append(np.argmax(item))
+    
+# %%
+matrix = confusion_matrix(y_true, y_pred)
+lbls = list(test_ds.class_names)
 
 plt.figure(figsize=(10, 8))
 
