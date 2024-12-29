@@ -7,7 +7,7 @@ Created on %(date)s
 
 from os.path import join
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import floor, sum, count, col
+from pyspark.sql.functions import floor, sum, col
 import argparse
 import sys
 
@@ -50,16 +50,21 @@ try:
         df = df.unionByName(df_temp)
     df.createOrReplaceTempView("taxi_trip")
         
-    df_rate_code = df \
-        .groupBy("RateCodeID") \
-        .agg((sum_round2("Total_amount")).alias("TotalRevenue")) \
-        .orderBy("RateCodeID")
+    df_rev = df.select(
+        (sum_round2("Fare_amount")).alias("TotalFare"),
+        (sum_round2("Extra")).alias("TotalExtra"),
+        (sum_round2("MTA_tax")).alias("TotalMTA"),
+        (sum_round2("Improvement_surcharge")).alias("TotalImprovementSurcharge"),
+        (sum_round2("Tip_amount")).alias("TotalTipAmount"),
+        (sum_round2("Tolls_amount")).alias("TotalTollsAmount"),
+        (sum_round2("Congestion_Surcharge")).alias("TotalCongestionSurcharge"),
+        (sum_round2("Airport_fee")).alias("TotalAirportFee"))
     
-    df_rate_code.show()
-    df_rate_code.write \
+    df_rev.show(vertical=True)
+    df_rev.write \
         .mode("overwrite") \
         .option("header", "true") \
-        .csv(join(output_uri, "df_rate_code"))
+        .csv(join(output_uri, "df_rev"))
         
 finally:
     spark.stop()
