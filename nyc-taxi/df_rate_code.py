@@ -7,7 +7,7 @@ Created on %(date)s
 
 from os.path import join
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import floor, sum, count, to_date, hour, col
+from pyspark.sql.functions import floor, sum, count, col
 import argparse
 import sys
 
@@ -48,30 +48,18 @@ try:
     df = lst[0]
     for df_temp in lst[1:]:
         df = df.unionByName(df_temp)
-
     df.createOrReplaceTempView("taxi_trip")
         
-    # %%
-        
-        # Vendor1 Trip Count
-        # df_vendor = spark.sql(
-        # """
-            
-        #     SELECT COUNT(VendorId) as Vendor1Count 
-        #     FROM taxi_trip
-        #     WHERE VendorID == 1
-        
-        # """)
-        
-    df_vendor = df \
-        .groupBy("VendorID") \
-        .agg((count("*")).alias("TripCount"))
-
-    df_vendor.show()
-    df_vendor.write \
+    df_rate_code = df \
+        .groupBy("RateCodeID") \
+        .agg((sum_round2("Total_amount")).alias("TotalRevenue")) \
+        .orderBy("RateCodeID")
+    
+    df_rate_code.show()
+    df_rate_code.write \
         .mode("overwrite") \
         .option("header", "true") \
-        .csv(join(output_uri, "df_vendor"))
-    
+        .csv(join(output_uri, "df_rate_code"))
+        
 finally:
     spark.stop()

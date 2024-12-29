@@ -7,7 +7,7 @@ Created on %(date)s
 
 from os.path import join
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import floor, sum, count, to_date, hour, col
+from pyspark.sql.functions import floor, sum, count, col, to_date, hour
 import argparse
 import sys
 
@@ -48,30 +48,24 @@ try:
     df = lst[0]
     for df_temp in lst[1:]:
         df = df.unionByName(df_temp)
-
     df.createOrReplaceTempView("taxi_trip")
         
-    # %%
-        
-        # Vendor1 Trip Count
-        # df_vendor = spark.sql(
-        # """
-            
-        #     SELECT COUNT(VendorId) as Vendor1Count 
-        #     FROM taxi_trip
-        #     WHERE VendorID == 1
-        
-        # """)
-        
-    df_vendor = df \
-        .groupBy("VendorID") \
-        .agg((count("*")).alias("TripCount"))
-
-    df_vendor.show()
-    df_vendor.write \
+    # Day-Hour Breakdown of TripCount, TotalRevenue, TotalPassengers, Total Distance
+    df_day_hour = df \
+        .groupBy((to_date("tpep_pickup_datetime")).alias("Date"), 
+                 (hour("tpep_pickup_datetime")).alias("Hour")) \
+        .agg(
+                (count("*")).alias("TripCount"),
+                (sum_round2("Total_amount")).alias("TotalRevenue"),
+                (sum("Passenger_count")).alias("TotalPassengers"),
+                (sum("Trip_distance")).alias("TotalDistance")) \
+        .orderBy(to_date("tpep_pickup_datetime"), hour("tpep_pickup_datetime"))
+    
+    df_day_hour.show()
+    df_day_hour.write \
         .mode("overwrite") \
         .option("header", "true") \
-        .csv(join(output_uri, "df_vendor"))
-    
+        .csv(join(output_uri, "df_day_hour"))
+        
 finally:
     spark.stop()

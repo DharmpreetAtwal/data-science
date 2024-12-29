@@ -7,7 +7,7 @@ Created on %(date)s
 
 from os.path import join
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import floor, sum, count, to_date, hour, col
+from pyspark.sql.functions import floor, sum, count, col
 import argparse
 import sys
 
@@ -48,7 +48,6 @@ try:
     df = lst[0]
     for df_temp in lst[1:]:
         df = df.unionByName(df_temp)
-
     df.createOrReplaceTempView("taxi_trip")
         
     # %%
