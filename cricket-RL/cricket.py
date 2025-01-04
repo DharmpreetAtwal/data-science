@@ -33,15 +33,16 @@ image2.show()
 
 
 # %%
-ratio = image.height / image.width
-new_width = 100
+# Preprocessing, resize 
+ratio = image2.height / image2.width
+new_width = int(image2.width / 5)
 new_height = int(new_width * ratio)
 
-arr = np.array(image)
-bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-resized_bgr = cv2.resize(bgr, (new_width, new_height), interpolation=cv2.INTER_NEAREST)
+# Convert PIL Image to NP array, Convert to BGR from RGB
+arr_image = np.array(image2)
+bgr = cv2.cvtColor(arr_image, cv2.COLOR_RGB2BGR)
 
+resized_bgr = cv2.resize(bgr, (new_width, new_height), interpolation=cv2.INTER_NEAREST_EXACT)
 resized_rgb = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2RGB)
-
-resized_pil = Image.fromarray(resized_rgb)
+resized_pil = Image.fromarray(resized_rgb).convert('L')
 resized_pil.show()
