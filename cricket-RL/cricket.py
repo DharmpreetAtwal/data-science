@@ -33,7 +33,9 @@ image2.show()
 
 
 # %%
-# Preprocessing, resize 
+# Preprocessing, resize to lower resolution, conver to gray scale
+
+# Maintain aspect ratio, 5x less data
 ratio = image2.height / image2.width
 new_width = int(image2.width / 5)
 new_height = int(new_width * ratio)
